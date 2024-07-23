@@ -8,7 +8,6 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 const registerUser = asyncHandler(async (req, res) => {
   // Get user details
   const { email, username, fullname, password } = req.body;
-  console.log(email);
 
   // Validation for not empty fields
   if (
@@ -20,15 +19,15 @@ const registerUser = asyncHandler(async (req, res) => {
   // Check user already exsit with same username and email
   // User is model which is created throw mongoose and it can access data in mongodb
 
-  // const exsitedUser = User.findOne({
+  // const exsitedUser = await User.findOne({
   //   $or: [{ email }, { username }],
   // });
   // if (exsitedUser) {
   //   throw new ApiError(409, "User name or email already taken");
   // }
 
-  const exsitedUsername = User.findOne({ username });
-  const exsitedEmail = User.findOne({ email });
+  const exsitedUsername = await User.findOne({ username });
+  const exsitedEmail = await User.findOne({ email });
   if (exsitedUsername) {
     throw new ApiError(409, "User name is already taken");
   }
@@ -38,8 +37,18 @@ const registerUser = asyncHandler(async (req, res) => {
 
   // check the cover image and avatar come or not
   // avatar is nessary and coverImage is not
+  // req.files come from multer
   const avatarLocalPath = req.files?.avatar[0]?.path;
-  const coverImageLocalPath = req.files?.coverImage[0]?.path;
+  let coverImageLocalPath;
+
+  // cover image
+  if (
+    req.files &&
+    Array.isArray(req.files.coverImage) &&
+    req.files.coverImage > 0
+  ) {
+    coverImageLocalPath = req.files.coverImage[0].path;
+  }
 
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is required");
@@ -57,10 +66,10 @@ const registerUser = asyncHandler(async (req, res) => {
   const user = await User.create({
     fullname,
     username: username.toLowerCase(),
-    password,
     email,
-    avatar: avatar.url,
+    password,
     coverImage: coverImage?.url || "",
+    avatar: avatar.url,
   });
 
   // to remove passowrd and refreshtoken
@@ -76,6 +85,7 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   // Return response
+  console.log("Success");
   return res
     .status(201)
     .json(new ApiResponse(200, "User Registerd Successfully", userCreated));

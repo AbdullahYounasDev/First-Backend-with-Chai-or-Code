@@ -52,7 +52,7 @@ const userSchema = new Schema(
 );
 
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("passowrd")) return next();
+  if (!this.isModified("password")) return next();
   // in bcrypt.hash first parameter is what thing to hash and second is how many time hash algo will perform
   this.password = await bcrypt.hash(this.password, 10);
   next();
@@ -60,8 +60,8 @@ userSchema.pre("save", async function (next) {
 
 // Custom methods
 // To check is encrypted password and user entered original password are same or not
-userSchema.methods.isPasswordCorrect = async function (passowrd) {
-  return await bcrypt.compare(passowrd, this.passowrd); // return true or false
+userSchema.methods.isPasswordCorrect = async function (password) {
+  return await bcrypt.compare(password, this.password); // return true or false
 };
 
 // Genrate Access Token
