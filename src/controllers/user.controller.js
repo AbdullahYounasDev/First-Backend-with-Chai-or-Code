@@ -5,6 +5,24 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
+const generateAccessAndRefreshToken = async (userId) => {
+  try {
+    const user = await User.findOne(userId);
+    const accessToken = user.genrateAccessToken();
+    const refreshToken = user.genrateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new ApiError(
+      500,
+      "Something went wrong to genrate access and referesh token"
+    );
+  }
+};
+
 const registerUser = asyncHandler(async (req, res) => {
   // Get user details
   const { email, username, fullname, password } = req.body;
@@ -91,4 +109,92 @@ const registerUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, "User Registerd Successfully", userCreated));
 });
 
-export { registerUser };
+// For Login
+const loginUser = asyncHandler(async (req, res) => {
+  // Get user details from req.body
+  const { email, username, password } = req.body;
+
+  // check if email and username comes
+  if (!(email || username)) {
+    throw new ApiError(400, "Email or Username are required");
+  }
+
+  // compare it with username or email with mongodb's data
+  const user = await User.findOne({
+    $or: [{ email }, { username }],
+  });
+  if (!user) {
+    throw new ApiError(
+      404,
+      "User is not registered with this username and email"
+    );
+  }
+
+  // check password is correct
+  const isPasswordValid = await user.isPasswordCorrect(password);
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Password is not correct");
+  }
+
+  // get access token and refresh token from based on userId
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
+
+  // For update (mean having refresh token because we create user objecct upper and add add refresh token and access token bottom here so we have to create another user object with update values) users informatoin we have to create another user
+  const updatedUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
+
+  // These options are created for security purpose for only cookies are update from server not update from frontend and others only update from server
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: updatedUser,
+          accessToken,
+          refreshToken,
+        },
+        "User Logged in Successfully"
+      )
+    );
+});
+
+// For logout
+const logoutUser = asyncHandler(async (req, res) => {
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        refreshToken: undefined,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .clearCookie(accessToken, options)
+    .clearCookie(refreshToken, options)
+    .json(new ApiResponse(200, "User Logout", {}));
+});
+
+export { registerUser, loginUser, logoutUser };
