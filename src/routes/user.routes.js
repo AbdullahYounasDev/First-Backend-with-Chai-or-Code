@@ -3,6 +3,7 @@ import {
   registerUser,
   loginUser,
   logoutUser,
+  RefreshAccessToken,
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
@@ -29,5 +30,6 @@ router.route("/login").post(loginUser);
 
 // Secure Routes
 router.route("/logout").post(verifyJWT, logoutUser);
+router.route("/refresh-token").post(RefreshAccessToken);
 
 export default router;
