@@ -5,6 +5,7 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -122,6 +123,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   // compare it with username or email with mongodb's data
   const user = await User.findOne({
+    //  $or is mongodb operator
     $or: [{ email }, { username }],
   });
   if (!user) {
@@ -192,7 +194,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     .status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
-    .json(new ApiResponse(200, "User Logout", {}));
+    .json(new ApiResponse(200, `${req.user.fullname} is logout`, {}));
 });
 
 // Access and refresh token update if user is logged in after expire access token
@@ -210,7 +212,7 @@ const RefreshAccessToken = asyncHandler(async (req, res) => {
       process.env.refreshToken
     );
 
-    const user = User.findById(decodeToken?._id);
+    const user = await User.findById(decodeToken?._id);
 
     if (!user) {
       throw new ApiError(401, "Invalid Refresh Token");
@@ -358,6 +360,130 @@ const updateCoverImage = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, "cover image Update Successfully", user));
 });
 
+// controller for channel profile
+const getChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+
+  if (!username) {
+    throw new ApiError(400, "Dont find channel with this username");
+  }
+
+  const channel = await User.aggregate([
+    {
+      // this pipline is use to match username from db
+      $match: {
+        username: username,
+      },
+    },
+    {
+      // This is use to find our subscribers by comparing id come from user with channel and the channel (basically documents) with this id are founded in array format, throw this we can find user's channel subscribers
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscriber",
+      },
+    },
+    {
+      // This is use to find our subscribed channel mean those channel whos subscribed by our channel. In this we compare user id with the total subscriber and the subscriber (basically documents) come with this id are in array format gotted, throw this we can find who is subscriberb by user's channel
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscriberTo",
+      },
+    },
+    {
+      // This will add  subscribersCount and channelToBeSubscribedCount fields in the user
+      //  $subscriber is come as: subscriber
+      $addFields: {
+        subscribersCount: {
+          $size: "$subscriber",
+        },
+        channelToBeSubscribedCount: {
+          $size: "$subscriberTo",
+        },
+        // use to check is subscriber is subscribed or not
+        isSubscribed: {
+          $cond: {
+            // this will check is current user id is present in subscribers
+            if: { $in: [req.user?._id, "$subscriber.subscriber"] },
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      // Project will add only added fields in the channel
+      $project: {
+        fullname: 1,
+        username: 1,
+        avatar: 1,
+        coverImage: 1,
+        email: 1,
+        subscribersCount: 1,
+        channelToBeSubscribedCount: 1,
+        isSubscribed: 1,
+      },
+    },
+  ]);
+
+  if (!channel?.length) {
+    throw new ApiError(404, "Channel not found");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, "User channel fetched", channel[0]));
+});
+
+const getUserWatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user._id),
+      },
+    },
+    {
+      $lookup: {
+        from: "videos",
+        foreignField: "_id",
+        localField: "watchHistory",
+        as: "watchHistory",
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              pipeline: [
+                {
+                  $project: {
+                    fullname: 1,
+                    username: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              $first: "$owner",
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, "Watch Hitory Detected", user[0].watchHistory));
+});
+
 export {
   registerUser,
   loginUser,
@@ -368,4 +494,6 @@ export {
   updateUserInfo,
   updateAvatar,
   updateCoverImage,
+  getChannelProfile,
+  getUserWatchHistory,
 };
