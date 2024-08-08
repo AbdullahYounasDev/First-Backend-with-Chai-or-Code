@@ -6,6 +6,7 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { removeFromCloudinary } from "../utils/removeFromCloudinary.js";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -58,6 +59,7 @@ const registerUser = asyncHandler(async (req, res) => {
   // check the cover image and avatar come or not
   // avatar is nessary and coverImage is not
   // req.files come from multer
+
   const avatarLocalPath = req.files?.avatar[0]?.path;
   let coverImageLocalPath;
 
@@ -65,7 +67,7 @@ const registerUser = asyncHandler(async (req, res) => {
   if (
     req.files &&
     Array.isArray(req.files.coverImage) &&
-    req.files.coverImage > 0
+    req.files.coverImage.length > 0
   ) {
     coverImageLocalPath = req.files.coverImage[0].path;
   }
@@ -82,7 +84,6 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   // Create user
-
   const user = await User.create({
     fullname,
     username: username.toLowerCase(),
@@ -90,6 +91,8 @@ const registerUser = asyncHandler(async (req, res) => {
     password,
     coverImage: coverImage?.url || "",
     avatar: avatar.url,
+    coverImage_public_id: coverImage.public_id,
+    avatar_public_id: avatar.public_id,
   });
 
   // to remove passowrd and refreshtoken
@@ -105,7 +108,6 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   // Return response
-  console.log("Success");
   return res
     .status(201)
     .json(new ApiResponse(200, "User Registerd Successfully", userCreated));
@@ -306,6 +308,8 @@ const updateUserInfo = asyncHandler(async (req, res) => {
 // Update avatar
 const updateAvatar = asyncHandler(async (req, res) => {
   const avatarLocalPath = req.file?.path;
+
+  const userWithOldAvatar = await User.findById(req.user._id);
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is missing");
   }
@@ -325,6 +329,14 @@ const updateAvatar = asyncHandler(async (req, res) => {
     }
   ).select("-password");
 
+  if (!userWithOldAvatar) {
+    throw new ApiError(
+      400,
+      "Unable to remove old Avatar Image from cloudinary"
+    );
+  }
+  removeFromCloudinary(userWithOldAvatar.avatar_public_id);
+
   return res
     .status(200)
     .json(new ApiResponse(200, "Avatar Update Successfully", user));
@@ -333,6 +345,7 @@ const updateAvatar = asyncHandler(async (req, res) => {
 // Update cover image
 const updateCoverImage = asyncHandler(async (req, res) => {
   const coverImageLocalPath = req.file?.path;
+  const userWithOldCoverImage = await User.findById(req.user._id);
   if (!coverImageLocalPath) {
     throw new ApiError(400, "Cover Image file is missing");
   }
@@ -354,6 +367,11 @@ const updateCoverImage = asyncHandler(async (req, res) => {
       new: true,
     }
   ).select("-password");
+
+  if (!userWithOldCoverImage) {
+    throw new ApiError(400, "Unable to remove old Cover Image from cloudinary");
+  }
+  removeFromCloudinary(userWithOldAvatar.coverImage_public_id);
 
   return res
     .status(200)

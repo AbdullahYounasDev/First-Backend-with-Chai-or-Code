@@ -29,7 +29,13 @@ const userSchema = new Schema(
       type: String, // Cloudnary service url
       required: true,
     },
+    avatar_public_id: {
+      type: String, // Cloudnary service url
+    },
     coverImage: {
+      type: String, // Cloudnary service url
+    },
+    coverImage_public_id: {
       type: String, // Cloudnary service url
     },
     watchHistory: [
